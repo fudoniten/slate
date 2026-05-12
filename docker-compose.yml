@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  slate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - TUNARR_API_URL=http://tunarr:8000
+      - PSEUDOVISION_API_URL=http://pseudovision:9000
+    volumes:
+      - ./src:/app/src
+      - ./resources:/app/resources
+    depends_on:
+      - tunarr
+      - pseudovision
+    networks:
+      - slate-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  tunarr:
+    image: tunarr:latest
+    ports:
+      - "8000:8000"
+    environment:
+      - NODE_ENV=production
+    networks:
+      - slate-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+  pseudovision:
+    image: pseudovision:latest
+    ports:
+      - "9000:9000"
+    environment:
+      - PORT=9000
+    networks:
+      - slate-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+networks:
+  slate-network:
+    driver: bridge
