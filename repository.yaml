@@ -1,0 +1,11 @@
+name: Slate
+description: Kubernetes-ready ClojureScript UI service for Pseudovision/Tunarr ecosystem
+topics:
+  - clojurescript
+  - reagent
+  - re-frame
+  - tailwind
+  - kubernetes
+  - ui
+  - tunarr
+  - pseudovision

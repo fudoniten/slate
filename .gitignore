@@ -1,0 +1,17 @@
+**/node_modules/
+**/out/
+**/dist/
+**/.shadow-cljs/
+**/.nrepl-port
+**/.cpcache/
+.DS_Store
+*.log
+.env
+.env.local
+/.idea
+*.iml
+.vscode/
+resources/public/js/
+resources/public/css/
+build/
+.cljs_rhino_repl/

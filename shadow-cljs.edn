@@ -1,0 +1,33 @@
+{:deps
+ {reagent       {:mvn/version "1.2.0"}
+  re-frame      {:mvn/version "1.3.0"}
+  re-frame-10x  {:mvn/version "1.1.0"}
+  re-frame-http {:mvn/version "0.2.0"}
+  day8.re-frame/tracing {:mvn/version "0.6.2"}
+  binaryage/devtools {:mvn/version "1.0.7"}
+  zprint        {:mvn/version "1.2.8"}}
+
+ :builds
+ {:app
+  {:target     :browser
+   :output-dir "resources/public/js"
+   :asset-path "/js"
+   :modules    {:main {:entries [slate.app]
+                       :depends-on #{}}}
+   :devtools   {:preloads [re-frame-10x.preload
+                           day8.re-frame.tracer.preload
+                           devtools.preload]}
+   :dev        {:compiler-options {:closure-defines {re-frame.core/debug false}}}
+   :release    {:compiler-options {:optimizations :advanced
+                                   :closure-defines {re-frame.core/debug false}
+                                   :source-map     "resources/public/js/main.js.map"}}
+   :js-options {:package-format :umd}}
+
+  :tests
+  {:target     :browser
+   :output-dir "resources/public/js-test"
+   :asset-path "/js-test"
+   :modules    {:test {:entries [slate.test.runner]}}
+   :devtools   {:preloads []}}}
+
+ :nrepl {:port 7002}}

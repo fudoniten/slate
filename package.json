@@ -1,0 +1,35 @@
+{
+  "name": "slate",
+  "version": "0.1.0",
+  "description": "Kubernetes-ready ClojureScript UI service for Pseudovision/Tunarr ecosystem",
+  "main": "server.js",
+  "scripts": {
+    "build": "shadow-cljs release app",
+    "watch": "shadow-cljs watch app",
+    "dev": "shadow-cljs watch app",
+    "clean": "shadow-cljs clean",
+    "release": "shadow-cljs release app",
+    "start": "node server.js",
+    "docker:build": "docker build -t slate:latest .",
+    "docker:run": "docker run -p 3000:3000 slate:latest"
+  },
+  "keywords": [
+    "clojurescript",
+    "reagent",
+    "re-frame",
+    "tailwind",
+    "kubernetes"
+  ],
+  "author": "fudohermes",
+  "license": "MIT",
+  "devDependencies": {
+    "shadow-cljs": "^2.26.2",
+    "postcss": "^8.4.32",
+    "postcss-cli": "^10.1.0",
+    "tailwindcss": "^3.3.6"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "compression": "^1.7.4"
+  }
+}
