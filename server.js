@@ -10,7 +10,7 @@ app.use(compression());
 app.use(express.json());
 
 // Static files
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'resources', 'public')));
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -33,7 +33,7 @@ app.use('/api/pseudovision', (req, res) => {
 
 // SPA fallback - serve index.html for all unmatched routes
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  res.sendFile(path.join(__dirname, 'resources', 'public', 'index.html'));
 });
 
 // Error handling

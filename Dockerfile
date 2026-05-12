@@ -31,6 +31,11 @@ RUN apk add --no-cache \
 
 # Copy built artifacts from builder
 COPY --from=builder /build/resources/public ./resources/public
+COPY --from=builder /build/server.js ./
+COPY --from=builder /build/package.json ./
+
+# Install production dependencies only
+RUN npm install --omit=dev
 
 # Create non-root user
 RUN addgroup -g 1000 app && \
