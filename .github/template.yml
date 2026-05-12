@@ -1,0 +1,22 @@
+# GitHub Repository Configuration
+# Place this in .github/template.yml when uploading to GitHub
+
+name: Slate
+description: Kubernetes-ready ClojureScript UI service for Pseudovision/Tunarr ecosystem
+topics:
+  - clojurescript
+  - reagent
+  - re-frame
+  - tailwind
+  - kubernetes
+  - ui
+  - tunarr
+  - pseudovision
+
+# Repository settings
+is-template: true
+default-branch: main
+visibility: public
+
+# This should be uploaded to fudohermes/slate repository
+# Enable "Use this template" feature in GitHub repository settings
