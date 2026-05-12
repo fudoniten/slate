@@ -61,6 +61,13 @@
           '';
         };
 
+        apps.deployContainer = {
+          type = "app";
+          program = toString (pkgs.writeShellScript "deploy-container" ''
+            ${pkgs.docker}/bin/docker load < ${self.packages.${system}.deployContainer}
+          '');
+        };
+
         defaultPackage = self.packages.${system}.deployContainer;
       }
     );
