@@ -18,16 +18,6 @@
         jdk = pkgs.jdk17;
         nodejs = pkgs.nodejs_20;
         packageJson = builtins.fromJSON (builtins.readFile ./package.json);
-      in {
-        devShells.default = pkgs.mkShell {
-          buildInputs = with pkgs; [ jdk nodejs clojure git curl docker ];
-
-          shellHook = ''
-            echo "Slate development environment loaded"
-            echo "Node version: $(node --version)"
-            echo "Java version: $(java -version 2>&1 | head -n 1)"
-          '';
-        };
 
         # Version information (git commit + timestamp)
         versionInfo = let
@@ -80,8 +70,19 @@
           '';
         };
 
-        packages = {
-          default = slateApp;
+      in {
+        devShells.default = pkgs.mkShell {
+          buildInputs = with pkgs; [ jdk nodejs clojure git curl docker ];
+
+          shellHook = ''
+            echo "Slate development environment loaded"
+            echo "Node version: $(node --version)"
+            echo "Java version: $(java -version 2>&1 | head -n 1)"
+          '';
+        };
+
+        packages = rec {
+          default = slate;
           slate = slateApp;
 
           deployContainer = helpers.deployContainers {
