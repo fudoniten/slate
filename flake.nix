@@ -49,16 +49,21 @@
             Entrypoint = [ "${nodejs}/bin/node" "server.js" ];
             User = "nobody";
           };
-
-          default = self.packages.${system}.deployContainer;
         };
+
+        packages.default = self.packages.${system}.deployContainer;
 
         apps = {
           deployContainer = {
             type = "app";
-            program =
-              let deployContainer = self.packages."${system}".deployContainer;
-              in "${deployContainer}/bin/deployContainers";
+            program = toString (pkgs.writeShellScript "deploy-container" ''
+              set -e
+              IMAGE_TAR="${self.packages.${system}.deployContainer}"
+              echo "Loading Docker image from $IMAGE_TAR..."
+              ${pkgs.docker}/bin/docker load < "$IMAGE_TAR"
+              echo "Docker image 'slate:latest' loaded successfully!"
+              echo "Run with: docker run -p 3000:3000 slate:latest"
+            '');
           };
         };
       });
