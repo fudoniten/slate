@@ -29,41 +29,94 @@
           '';
         };
 
-        # Production-ready container image
-        packages.deployContainer = pkgs.dockerTools.buildLayeredImage {
-          name = "slate";
-          tag = "latest";
-          maxLayers = 120;
+        # Version information (git commit + timestamp)
+        versionInfo = let
+          gitCommit = self.rev or self.dirtyRev or "unknown";
+          gitTimestamp = if self ? lastModified then
+            toString self.lastModified
+          else
+            "unknown";
+          versionTag = if self ? lastModified then
+            builtins.substring 0 8 gitTimestamp # Use YYYYMMDD
+          else
+            "dev";
+        in { inherit gitCommit gitTimestamp versionTag; };
 
-          contents = with pkgs; [ cacert nodejs_20 bash coreutils ];
+        # Build the slate application
+        slateApp = pkgs.stdenv.mkDerivation {
+          pname = "slate";
+          version = packageJson.version;
+          src = ./.;
 
-          config = {
-            Env = [
-              "NODE_ENV=production"
-              "APP_VERSION=${packageJson.version}"
-              "GIT_HASH=${self.rev or "dirty"}"
-              "GIT_TIMESTAMP=${toString self.lastModified}"
+          buildInputs = [ jdk nodejs pkgs.clojure ];
+
+          buildPhase = ''
+            # Set up home for npm/clojure cache
+            export HOME=$TMPDIR
+
+            # Install npm dependencies
+            npm ci
+
+            # Build the ClojureScript application
+            npx shadow-cljs release app
+          '';
+
+          installPhase = ''
+            # Copy the built application and dependencies
+            mkdir -p $out/app
+            cp -r resources $out/app/
+            cp -r node_modules $out/app/
+            cp package.json $out/app/
+            cp server.js $out/app/
+
+            # Create a wrapper script
+            mkdir -p $out/bin
+            cat > $out/bin/slate <<EOF
+            #!${pkgs.bash}/bin/bash
+            cd $out/app
+            exec ${nodejs}/bin/node server.js "\$@"
+            EOF
+            chmod +x $out/bin/slate
+          '';
+        };
+
+        packages = {
+          default = slateApp;
+          slate = slateApp;
+
+          deployContainer = helpers.deployContainers {
+            name = "slate";
+            repo = "registry.kube.sea.fudo.link";
+            tags = [ "latest" versionInfo.versionTag ];
+            environmentPackages = with pkgs; [
+              nodejs_20
+              cacert
+              bash
+              coreutils
             ];
-            WorkingDir = "/app";
-            ExposedPorts = { "3000/tcp" = { }; };
-            Entrypoint = [ "${nodejs}/bin/node" "server.js" ];
-            User = "nobody";
+            verbose = true;
+            env = {
+              NODE_ENV = "production";
+              APP_VERSION = packageJson.version;
+              GIT_COMMIT = versionInfo.gitCommit;
+              GIT_TIMESTAMP = versionInfo.gitTimestamp;
+              VERSION = versionInfo.versionTag;
+            };
+            entrypoint = [ "${slateApp}/bin/slate" ];
           };
         };
 
-        packages.default = self.packages.${system}.deployContainer;
-
         apps = {
+          default = {
+            type = "app";
+            program = "${slateApp}/bin/slate";
+          };
+
           deployContainer = {
             type = "app";
-            program = toString (pkgs.writeShellScript "deploy-container" ''
-              set -e
-              IMAGE_TAR="${self.packages.${system}.deployContainer}"
-              echo "Loading Docker image from $IMAGE_TAR..."
-              ${pkgs.docker}/bin/docker load < "$IMAGE_TAR"
-              echo "Docker image 'slate:latest' loaded successfully!"
-              echo "Run with: docker run -p 3000:3000 slate:latest"
-            '');
+            program =
+              let deployContainer = self.packages.${system}.deployContainer;
+              in "${deployContainer}/bin/deployContainers";
           };
         };
       });
