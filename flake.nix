@@ -55,7 +55,7 @@
             export HOME=$TMPDIR
 
             # Install npm dependencies
-            npm ci
+            npm install
 
             # Build the ClojureScript application
             npx shadow-cljs release app
@@ -112,11 +112,35 @@
             program = "${slateApp}/bin/slate";
           };
 
+          update = {
+            type = "app";
+            program = let
+              updateScript = pkgs.writeShellScript "slate-update" ''
+                set -e
+                REPO_ROOT=$(${pkgs.git}/bin/git rev-parse --show-toplevel)
+                echo "Updating package-lock.json in $REPO_ROOT..."
+                cd "$REPO_ROOT"
+                ${nodejs}/bin/npm install --package-lock-only
+                echo ""
+                echo "Done! Commit the updated package-lock.json before deploying."
+              '';
+            in "${updateScript}";
+          };
+
           deployContainer = {
             type = "app";
-            program =
-              let deployContainer = self.packages.${system}.deployContainer;
-              in "${deployContainer}/bin/deployContainers";
+            program = let
+              deployContainer = self.packages.${system}.deployContainer;
+              wrapper = pkgs.writeShellScript "slate-deploy" ''
+                echo ""
+                echo "###############################################################"
+                echo "# REMINDER: run \`nix run .#update\` and commit the result     #"
+                echo "# if package.json has changed since the last lockfile update. #"
+                echo "###############################################################"
+                echo ""
+                exec ${deployContainer}/bin/deployContainers "$@"
+              '';
+            in "${wrapper}";
           };
         };
       });
