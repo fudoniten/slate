@@ -18,6 +18,66 @@
         jdk = pkgs.jdk17;
         nodejs = pkgs.nodejs_20;
         packageJson = builtins.fromJSON (builtins.readFile ./package.json);
+
+        # Pre-fetch Maven/Clojure deps as a fixed-output derivation.
+        # After changing deps.edn, run `nix build` and copy the "got:" hash here.
+        mavenDeps = pkgs.stdenv.mkDerivation {
+          name = "slate-maven-deps";
+          src = ./.;
+          nativeBuildInputs = [ jdk pkgs.clojure ];
+          outputHashAlgo = "sha256";
+          outputHashMode = "recursive";
+          outputHash = pkgs.lib.fakeHash;
+          buildPhase = ''
+            export HOME=$TMPDIR
+            clojure -P
+          '';
+          installPhase = ''
+            cp -r $HOME/.m2 $out
+          '';
+        };
+
+        # Build the slate application using buildNpmPackage so that npm deps
+        # are fetched in a fixed-output derivation rather than at build time.
+        # After running `nix run .#update`, run `nix build` and copy the
+        # "got:" hash for npmDepsHash here.
+        slateApp = pkgs.buildNpmPackage {
+          pname = "slate";
+          version = packageJson.version;
+          src = ./.;
+
+          npmDepsHash = pkgs.lib.fakeHash;
+
+          nativeBuildInputs = [ jdk pkgs.clojure ];
+
+          buildPhase = ''
+            runHook preBuild
+            export HOME=$TMPDIR
+            cp -rL ${mavenDeps} $HOME/.m2
+            chmod -R +w $HOME/.m2
+            npx shadow-cljs release app
+            runHook postBuild
+          '';
+
+          installPhase = ''
+            runHook preInstall
+            mkdir -p $out/app
+            cp -r resources $out/app/
+            cp -r node_modules $out/app/
+            cp package.json $out/app/
+            cp server.js $out/app/
+
+            mkdir -p $out/bin
+            cat > $out/bin/slate <<EOF
+            #!${pkgs.bash}/bin/bash
+            cd $out/app
+            exec ${nodejs}/bin/node server.js "\$@"
+            EOF
+            chmod +x $out/bin/slate
+            runHook postInstall
+          '';
+        };
+
       in {
         devShells.default = pkgs.mkShell {
           buildInputs = with pkgs; [ jdk nodejs clojure git curl docker ];
@@ -41,44 +101,6 @@
           else
             "dev";
         in { inherit gitCommit gitTimestamp versionTag; };
-
-        # Build the slate application
-        slateApp = pkgs.stdenv.mkDerivation {
-          pname = "slate";
-          version = packageJson.version;
-          src = ./.;
-
-          buildInputs = [ jdk nodejs pkgs.clojure ];
-
-          buildPhase = ''
-            # Set up home for npm/clojure cache
-            export HOME=$TMPDIR
-
-            # Install npm dependencies
-            npm install
-
-            # Build the ClojureScript application
-            npx shadow-cljs release app
-          '';
-
-          installPhase = ''
-            # Copy the built application and dependencies
-            mkdir -p $out/app
-            cp -r resources $out/app/
-            cp -r node_modules $out/app/
-            cp package.json $out/app/
-            cp server.js $out/app/
-
-            # Create a wrapper script
-            mkdir -p $out/bin
-            cat > $out/bin/slate <<EOF
-            #!${pkgs.bash}/bin/bash
-            cd $out/app
-            exec ${nodejs}/bin/node server.js "\$@"
-            EOF
-            chmod +x $out/bin/slate
-          '';
-        };
 
         packages = {
           default = slateApp;
@@ -122,7 +144,10 @@
                 cd "$REPO_ROOT"
                 ${nodejs}/bin/npm install --package-lock-only
                 echo ""
-                echo "Done! Commit the updated package-lock.json before deploying."
+                echo "Done! Next steps:"
+                echo "  1. git add package-lock.json && git commit"
+                echo "  2. Run: nix build 2>&1 | grep 'got:'"
+                echo "     and update npmDepsHash in flake.nix with the printed hash."
               '';
             in "${updateScript}";
           };
@@ -133,10 +158,12 @@
               deployContainer = self.packages.${system}.deployContainer;
               wrapper = pkgs.writeShellScript "slate-deploy" ''
                 echo ""
-                echo "###############################################################"
-                echo "# REMINDER: run \`nix run .#update\` and commit the result     #"
-                echo "# if package.json has changed since the last lockfile update. #"
-                echo "###############################################################"
+                echo "################################################################"
+                echo "# REMINDER: if package.json changed since the last deploy:    #"
+                echo "#   1. nix run .#update  (regenerate package-lock.json)       #"
+                echo "#   2. Update npmDepsHash in flake.nix (nix build shows hash) #"
+                echo "#   3. Commit both files before running this again.            #"
+                echo "################################################################"
                 echo ""
                 exec ${deployContainer}/bin/deployContainers "$@"
               '';
