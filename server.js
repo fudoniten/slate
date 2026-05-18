@@ -17,6 +17,15 @@ app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Version info
+app.get('/version', (req, res) => {
+  res.status(200).json({
+    version: process.env.APP_VERSION || 'unknown',
+    gitHash: process.env.GIT_HASH || 'unknown',
+    gitTimestamp: process.env.GIT_TIMESTAMP || 'unknown',
+  });
+});
+
 // Readiness check for Kubernetes
 app.get('/ready', (req, res) => {
   res.status(200).json({ ready: true, timestamp: new Date().toISOString() });

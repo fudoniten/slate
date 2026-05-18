@@ -12,6 +12,7 @@
         pkgs = nixpkgs.legacyPackages.${system};
         jdk = pkgs.jdk17;
         nodejs = pkgs.nodejs_20;
+        packageJson = builtins.fromJSON (builtins.readFile ./package.json);
       in
       {
         devShells.default = pkgs.mkShell {
@@ -47,12 +48,15 @@
           config = {
             Env = [
               "NODE_ENV=production"
+              "APP_VERSION=${packageJson.version}"
+              "GIT_HASH=${self.rev or "dirty"}"
+              "GIT_TIMESTAMP=${toString self.lastModified}"
             ];
             WorkingDir = "/app";
             ExposedPorts = {
               "3000/tcp" = { };
             };
-            Entrypoint = [ "${nodejs}/bin/node" "resources/public/js/main.js" ];
+            Entrypoint = [ "${nodejs}/bin/node" "server.js" ];
             User = "nobody";
           };
 

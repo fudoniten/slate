@@ -11,7 +11,7 @@ RUN apk add --no-cache \
     curl
 
 # Copy project files
-COPY deps.edn shadow-cljs.edn package.json package-lock.json* ./
+COPY deps.edn shadow-cljs.edn package.json package-lock.json* server.js ./
 COPY src ./src
 COPY resources ./resources
 
