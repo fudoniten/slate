@@ -78,17 +78,6 @@
           '';
         };
 
-      in {
-        devShells.default = pkgs.mkShell {
-          buildInputs = with pkgs; [ jdk nodejs clojure git curl docker ];
-
-          shellHook = ''
-            echo "Slate development environment loaded"
-            echo "Node version: $(node --version)"
-            echo "Java version: $(java -version 2>&1 | head -n 1)"
-          '';
-        };
-
         # Version information (git commit + timestamp)
         versionInfo = let
           gitCommit = self.rev or self.dirtyRev or "unknown";
@@ -101,6 +90,17 @@
           else
             "dev";
         in { inherit gitCommit gitTimestamp versionTag; };
+
+      in {
+        devShells.default = pkgs.mkShell {
+          buildInputs = with pkgs; [ jdk nodejs clojure git curl docker ];
+
+          shellHook = ''
+            echo "Slate development environment loaded"
+            echo "Node version: $(node --version)"
+            echo "Java version: $(java -version 2>&1 | head -n 1)"
+          '';
+        };
 
         packages = {
           default = slateApp;
