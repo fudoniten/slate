@@ -46,7 +46,7 @@
           version = packageJson.version;
           src = ./.;
 
-          npmDepsHash = "sha256-lTjF7hiRubryaHW4oyw7HXWtCkNnPX1la8JCa2mPTD0=";
+          npmDepsHash = pkgs.lib.trim (builtins.readFile ./npm-hash);
 
           nativeBuildInputs = [ jdk pkgs.clojure ];
 
@@ -140,14 +140,21 @@
               updateScript = pkgs.writeShellScript "slate-update" ''
                 set -e
                 REPO_ROOT=$(${pkgs.git}/bin/git rev-parse --show-toplevel)
-                echo "Updating package-lock.json in $REPO_ROOT..."
+                echo "Updating package-lock.json..."
                 cd "$REPO_ROOT"
                 ${nodejs}/bin/npm install --package-lock-only
                 echo ""
-                echo "Done! Next steps:"
-                echo "  1. git add package-lock.json && git commit"
-                echo "  2. Run: nix build 2>&1 | grep 'got:'"
-                echo "     and update npmDepsHash in flake.nix with the printed hash."
+                echo "Computing npm deps hash..."
+                NPM_HASH=$(${pkgs.prefetch-npm-deps}/bin/prefetch-npm-deps "$REPO_ROOT/package-lock.json")
+                printf '%s' "$NPM_HASH" > "$REPO_ROOT/npm-hash"
+                echo "npm-hash updated: $NPM_HASH"
+                echo ""
+                echo "Done! Next step: if Clojure deps changed, recompute the maven hash:"
+                echo "  nix build 2>&1 | grep 'got:'"
+                echo "  Then update outputHash in the mavenDeps derivation in flake.nix."
+                echo ""
+                echo "Commit when ready:"
+                echo "  git add package-lock.json npm-hash flake.nix && git commit"
               '';
             in "${updateScript}";
           };
