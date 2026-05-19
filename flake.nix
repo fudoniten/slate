@@ -46,7 +46,7 @@
           version = packageJson.version;
           src = ./.;
 
-          npmDepsHash = pkgs.lib.fakeHash;
+          npmDepsHash = "sha256-lTjF7hiRubryaHW4oyw7HXWtCkNnPX1la8JCa2mPTD0=";
 
           nativeBuildInputs = [ jdk pkgs.clojure ];
 
