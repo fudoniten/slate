@@ -12,5 +12,6 @@
    :media/items []
    :media/filter ""
    :media/selected-id nil
+   :media/view :grid
 
    :api/error nil})
