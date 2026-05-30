@@ -34,7 +34,7 @@ spec:
       
       containers:
       - name: slate
-        image: slate:latest
+        image: registry.kube.sea.fudo.link/slate:latest
         imagePullPolicy: Always
         ports:
         - name: http

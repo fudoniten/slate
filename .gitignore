@@ -16,3 +16,5 @@ resources/public/css/
 build/
 .cljs_rhino_repl/
 .clj-kondo/
+result
+.lsp/

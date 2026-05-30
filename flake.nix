@@ -30,8 +30,7 @@
           nativeBuildInputs = [ jdk pkgs.clojure ];
           outputHashAlgo = "sha256";
           outputHashMode = "recursive";
-          # TODO: replace with the real hash obtained by running the steps above.
-          outputHash = pkgs.lib.fakeHash;
+          outputHash = "sha256-qshw17Lr/Utsl/h0G0MhGJJu4GH2GLHlFAx6mixSY2c=";
           buildPhase = ''
             export HOME=$TMPDIR
             clojure -P
@@ -54,13 +53,13 @@
 
           nativeBuildInputs = [ jdk pkgs.clojure ];
 
-          buildPhase = ''
-            runHook preBuild
+          # Don't prune devDependencies - we need shadow-cljs for the build
+          npmBuildScript = "build";
+
+          preBuild = ''
             export HOME=$TMPDIR
             cp -rL ${mavenDeps} $HOME/.m2
             chmod -R +w $HOME/.m2
-            npx shadow-cljs release app
-            runHook postBuild
           '';
 
           installPhase = ''
@@ -81,36 +80,6 @@
             runHook postInstall
           '';
         };
-
-        # Docker-based deploy script. Used by apps.deployContainer when the
-        # Nix-native build is unavailable (e.g. while mavenDeps.outputHash
-        # is still a placeholder). Requires Docker on PATH.
-        deployContainerScript = pkgs.writeShellScript "slate-deploy-docker" ''
-          set -euo pipefail
-          REGISTRY="registry.kube.sea.fudo.link"
-          NAME="slate"
-          REPO_ROOT=$(${pkgs.git}/bin/git rev-parse --show-toplevel)
-          GIT_HASH=$(${pkgs.git}/bin/git rev-parse HEAD 2>/dev/null || echo "unknown")
-          GIT_TIMESTAMP=$(${pkgs.git}/bin/git log -1 --format=%ct 2>/dev/null || echo "unknown")
-          VERSION_TAG=$(${pkgs.git}/bin/git log -1 --format=%cd --date=format:'%Y%m%d' 2>/dev/null || echo "dev")
-
-          echo ""
-          echo "################################################################"
-          echo "# Building Docker image and pushing to $REGISTRY             #"
-          echo "################################################################"
-          echo ""
-
-          docker build \
-            --tag "$REGISTRY/$NAME:latest" \
-            --tag "$REGISTRY/$NAME:$VERSION_TAG" \
-            "$REPO_ROOT"
-
-          docker push "$REGISTRY/$NAME:latest"
-          docker push "$REGISTRY/$NAME:$VERSION_TAG"
-
-          echo ""
-          echo "Done! Pushed $REGISTRY/$NAME:latest and $REGISTRY/$NAME:$VERSION_TAG"
-        '';
 
         # Version information (git commit + timestamp)
         versionInfo = let
@@ -139,10 +108,22 @@
         packages = {
           default = slateApp;
           slate = slateApp;
-          # packages.deployContainer (Nix-native OCI image) is temporarily
-          # removed because mavenDeps.outputHash is still a placeholder.
-          # Once that hash is computed and filled in, restore it with:
-          #   deployContainer = helpers.deployContainers { ... };
+          deployContainer = helpers.deployContainers {
+            name = "slate";
+            repo = "registry.kube.sea.fudo.link";
+            tags = [ "latest" versionInfo.versionTag ];
+            entrypoint = [ "${nodejs}/bin/node" "${slateApp}/app/server.js" ];
+            environmentPackages = [ nodejs ];
+            pathEnv = [ nodejs ];
+            exposedPorts = [ 3000 ];
+            env = {
+              NODE_ENV = "production";
+              PORT = "3000";
+              APP_VERSION = packageJson.version;
+              GIT_HASH = versionInfo.gitCommit;
+              GIT_TIMESTAMP = versionInfo.gitTimestamp;
+            };
+          };
         };
 
         apps = {
@@ -178,10 +159,8 @@
 
           deployContainer = {
             type = "app";
-            # Uses Docker (not the Nix-native build) so it works even while
-            # mavenDeps.outputHash is still a placeholder. Once that hash is
-            # set correctly, packages.deployContainer provides the pure-Nix path.
-            program = "${deployContainerScript}";
+            program =
+              "${self.packages.${system}.deployContainer}/bin/deployContainers";
           };
         };
       });
