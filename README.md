@@ -13,32 +13,50 @@
 
 ## Quick Start
 
-### Development
+### Development (Nix - Recommended)
 
-Prerequisites: Node.js 20+, Java 17+, Clojure
+Prerequisites: Nix with flakes enabled
 
 ```bash
-nix flake update
+nix develop              # Enter development shell
+npm install              # Install npm dependencies
+npm run watch            # Start shadow-cljs in watch mode
+```
+
+In another terminal:
+```bash
 nix develop
-npm install
-npm run watch
+npm start                # Start the server
 ```
 
 Visit `http://localhost:3000` in your browser.
 
-### Production Build
+### Development (Manual)
+
+Prerequisites: Node.js 20+, Java 17+, Clojure
 
 ```bash
-npm run build
-npm start
+npm install
+npm run watch            # Start shadow-cljs in watch mode
+npm start                # Start the server (in another terminal)
 ```
 
-### Docker
+### Production Build & Deploy (Nix)
 
 ```bash
-npm run docker:build
-npm run docker:run
+nix build .#slate                 # Build application
+nix run .#deployContainer         # Build and push container to registry
 ```
+
+### Updating Dependencies
+
+```bash
+# After changing package.json or deps.edn:
+nix run .#update                  # Updates npm hash
+# Then follow prompts to update Maven hash if needed
+```
+
+See **Dependency Management** section for details.
 
 ## Project Structure
 
@@ -171,26 +189,190 @@ Tailwind CSS with custom configuration in `tailwind.config.js`:
 - Responsive grid and spacing utilities
 - Custom animations and transitions
 
+## Dependency Management
+
+This project uses **Nix** for reproducible builds with fixed-output derivations. Dependencies are cached using cryptographic hashes that must be updated when dependencies change.
+
+### Understanding the Hash System
+
+The project has **TWO** separate dependency systems with different hashes:
+
+1. **npm dependencies** (JavaScript packages)
+   - Defined in: `package.json`
+   - Lock file: `package-lock.json`
+   - Hash stored in: `npm-hash` file
+   - Includes: react, express, shadow-cljs npm package, etc.
+
+2. **Maven/Clojure dependencies** (Java/Clojure libraries)
+   - Defined in: `deps.edn`
+   - Hash stored in: `flake.nix` (line ~33, `mavenDeps.outputHash`)
+   - Includes: reagent, re-frame, shadow-cljs jar, etc.
+
+### When to Update Hashes
+
+| You changed... | Update npm hash? | Update Maven hash? |
+|----------------|------------------|-------------------|
+| `package.json` | ✅ Yes | ❌ No |
+| `deps.edn` | ❌ No | ✅ Yes |
+| shadow-cljs version | ✅ Yes | ✅ Yes (both!) |
+
+### Quick Update Workflow
+
+**Option 1: Automated (Recommended for npm changes)**
+
+```bash
+nix run .#update
+```
+
+This automatically:
+- Updates `package-lock.json`
+- Computes and saves the new npm hash
+- Tells you if Maven hash needs updating
+
+**Option 2: Manual (Full control)**
+
+See detailed steps below.
+
+### Detailed Update Steps
+
+#### Step 1: Update npm Hash (when package.json changes)
+
+```bash
+# Method A: Use the update script
+nix run .#update
+
+# Method B: Manual
+# 1. Set placeholder hash
+echo "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" > npm-hash
+
+# 2. Build to get correct hash
+nix build .#slate 2>&1 | grep "got:"
+# Output: got:    sha256-HWFJkJKOTUoPbKCzxpeakjji4DHr11WgvtwJ197fFXs=
+
+# 3. Save the hash
+echo "sha256-HWFJkJKOTUoPbKCzxpeakjji4DHr11WgvtwJ197fFXs=" > npm-hash
+```
+
+#### Step 2: Update Maven Hash (when deps.edn changes)
+
+```bash
+# 1. Edit flake.nix, find mavenDeps.outputHash (around line 33)
+# Change it to:
+outputHash = pkgs.lib.fakeHash;
+
+# 2. Build to get correct hash
+nix build .#slate 2>&1 | grep "got:"
+# Output: got:    sha256-3xKKyonI0UD7CdvDdBA11e/Kb27wG5AZSo2/+hgtpR4=
+
+# 3. Update flake.nix with the new hash:
+outputHash = "sha256-3xKKyonI0UD7CdvDdBA11e/Kb27wG5AZSo2/+hgtpR4=";
+```
+
+#### Step 3: Verify the Build
+
+```bash
+nix build .#slate
+ls -la result/app/server.js  # Should exist
+```
+
+### Critical Configuration
+
+**shadow-cljs.edn MUST have `:deps true`**
+
+```clojure
+{:deps true          ;; ← REQUIRED! Tells shadow-cljs to use deps.edn
+ :source-paths ["src"]
+ :builds {...}}
+```
+
+Without this, shadow-cljs will try to download dependencies at build time, causing network errors in the Nix sandbox.
+
+### Version Synchronization
+
+**shadow-cljs version must match in both files:**
+
+```bash
+# Check versions match
+grep "shadow-cljs" package-lock.json deps.edn
+
+# If mismatched, update deps.edn to match package-lock.json
+# Then update BOTH hashes (npm and Maven)
+```
+
+### Common Issues
+
+#### "Temporary failure in name resolution" or "Could not locate shadow/cljs/..."
+
+**Cause:** Maven hash is incorrect or shadow-cljs trying to download at runtime
+
+**Fix:**
+1. Verify `shadow-cljs.edn` has `:deps true`
+2. Check shadow-cljs versions match in `deps.edn` and `package-lock.json`
+3. Update Maven hash (Step 2 above)
+
+#### "The required namespace X is not available"
+
+**Cause:** Wrong namespace in require statement
+
+**Fix:** Check library documentation for correct namespace:
+- `day8.re-frame/http-fx` → `day8.re-frame.http-fx`
+- `reagent/reagent` → `reagent.core`
+- `re-frame/re-frame` → `re-frame.core`
+
+#### "hash mismatch in fixed-output derivation"
+
+**Cause:** The hash doesn't match the dependencies
+
+**Fix:**
+- For npm deps: Update `npm-hash` file (Step 1)
+- For Maven deps: Update `mavenDeps.outputHash` in `flake.nix` (Step 2)
+
+### Development Workflow
+
+```bash
+# 1. Make code changes
+# 2. If you changed dependencies:
+nix run .#update              # For npm changes
+# ... or manually update hashes
+
+# 3. Build
+nix build .#slate
+
+# 4. Deploy
+nix run .#deployContainer
+```
+
 ## Build & Deployment
+
+### Nix Build (Production - Recommended)
+
+```bash
+# Build application
+nix build .#slate
+
+# Build and deploy container
+nix run .#deployContainer
+```
+
+The deployment will:
+- Build the application using Nix
+- Create an OCI container image
+- Push to `registry.kube.sea.fudo.link/slate:latest`
+- Kubernetes will auto-pull the new image
 
 ### Local Development
 
 ```bash
-npm run watch        # Watch mode
-npm start           # Run server
-```
-
-### Production Build
-
-```bash
-npm run build       # Release build
-npm run docker:build # Build Docker image
+nix develop          # Enter development shell
+npm run watch        # Watch mode with hot reload
+npm start            # Run server (in another terminal)
 ```
 
 ### Kubernetes
 
 ```bash
 kubectl apply -f k8s/
+kubectl -n slate get pods
 kubectl -n slate port-forward svc/slate 3000:80
 ```
 
@@ -237,6 +419,13 @@ This is a PoC service designed to grow with the ecosystem. Areas for future deve
 ## License
 
 MIT - See LICENSE file
+
+## Documentation
+
+- **[DEPENDENCY_UPDATE_GUIDE.md](DEPENDENCY_UPDATE_GUIDE.md)** - Complete dependency update reference
+- **README.md** (this file) - Project overview and documentation
+- **flake.nix** - Nix build configuration
+- Run `nix develop` for quick command reference
 
 ## Resources
 

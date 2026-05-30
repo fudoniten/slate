@@ -1,5 +1,5 @@
 (ns slate.api.client
-  (:require [re-frame-http-fx.http-fx]))
+  (:require [day8.re-frame.http-fx]))
 
 ;; Side-effectful require registers the :http-xhrio effect handler.
 

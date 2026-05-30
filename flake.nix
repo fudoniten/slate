@@ -30,7 +30,7 @@
           nativeBuildInputs = [ jdk pkgs.clojure ];
           outputHashAlgo = "sha256";
           outputHashMode = "recursive";
-          outputHash = "sha256-qshw17Lr/Utsl/h0G0MhGJJu4GH2GLHlFAx6mixSY2c=";
+          outputHash = "sha256-3xKKyonI0UD7CdvDdBA11e/Kb27wG5AZSo2/+hgtpR4=";
           buildPhase = ''
             export HOME=$TMPDIR
             clojure -P
@@ -99,9 +99,38 @@
           buildInputs = with pkgs; [ jdk nodejs clojure git curl docker ];
 
           shellHook = ''
-            echo "Slate development environment loaded"
-            echo "Node version: $(node --version)"
-            echo "Java version: $(java -version 2>&1 | head -n 1)"
+            echo "╔════════════════════════════════════════════════════════════════════════════╗"
+            echo "║                    Slate Development Environment                           ║"
+            echo "╚════════════════════════════════════════════════════════════════════════════╝"
+            echo ""
+            echo "Environment Info:"
+            echo "  • Node version: $(node --version)"
+            echo "  • Java version: $(java -version 2>&1 | head -n 1 | cut -d'"' -f2)"
+            echo "  • Clojure version: $(clojure --version | head -n 1)"
+            echo ""
+            echo "Quick Start:"
+            echo "  npm install              # Install dependencies"
+            echo "  npm run watch            # Start shadow-cljs (hot reload)"
+            echo "  npm start                # Start server (in another terminal)"
+            echo ""
+            echo "Build & Deploy:"
+            echo "  nix build .#slate                # Build application"
+            echo "  nix run .#deployContainer        # Deploy to registry"
+            echo ""
+            echo "Dependency Updates:"
+            echo "  nix run .#update                 # Update npm hash (auto)"
+            echo ""
+            echo "  When deps.edn changes:"
+            echo "    1. Edit flake.nix, set: outputHash = pkgs.lib.fakeHash;"
+            echo "    2. Run: nix build .#slate 2>&1 | grep \"got:\""
+            echo "    3. Update flake.nix with the hash from step 2"
+            echo ""
+            echo "Common Issues:"
+            echo "  • \"hash mismatch\" → Run: nix run .#update"
+            echo "  • \"Could not locate shadow/cljs\" → Update Maven hash (see above)"
+            echo "  • \"namespace not available\" → Check require statements match deps"
+            echo ""
+            echo "Full documentation: See README.md and DEPENDENCY_UPDATE_GUIDE.md"
           '';
         };
 
@@ -136,23 +165,68 @@
             type = "app";
             program = let
               updateScript = pkgs.writeShellScript "slate-update" ''
-                set -e
-                REPO_ROOT=$(${pkgs.git}/bin/git rev-parse --show-toplevel)
-                echo "Updating package-lock.json..."
-                cd "$REPO_ROOT"
-                ${nodejs}/bin/npm install --package-lock-only
-                echo ""
-                echo "Computing npm deps hash..."
-                NPM_HASH=$(${pkgs.prefetch-npm-deps}/bin/prefetch-npm-deps "$REPO_ROOT/package-lock.json")
-                printf '%s' "$NPM_HASH" > "$REPO_ROOT/npm-hash"
-                echo "npm-hash updated: $NPM_HASH"
-                echo ""
-                echo "Done! Next step: if Clojure deps changed, recompute the maven hash:"
-                echo "  nix build 2>&1 | grep 'got:'"
-                echo "  Then update outputHash in the mavenDeps derivation in flake.nix."
-                echo ""
-                echo "Commit when ready:"
-                echo "  git add package-lock.json npm-hash flake.nix && git commit"
+                                set -e
+                                REPO_ROOT=$(${pkgs.git}/bin/git rev-parse --show-toplevel)
+                                
+                                cat <<'EOF'
+                ╔════════════════════════════════════════════════════════════════════════════╗
+                ║                     Slate Dependency Update Tool                           ║
+                ╚════════════════════════════════════════════════════════════════════════════╝
+
+                This tool updates npm dependencies and computes the npm hash.
+                EOF
+                                
+                                echo ""
+                                echo "📦 Step 1/2: Updating package-lock.json..."
+                                cd "$REPO_ROOT"
+                                ${nodejs}/bin/npm install --package-lock-only
+                                
+                                echo ""
+                                echo "🔐 Step 2/2: Computing npm deps hash..."
+                                NPM_HASH=$(${pkgs.prefetch-npm-deps}/bin/prefetch-npm-deps "$REPO_ROOT/package-lock.json")
+                                printf '%s' "$NPM_HASH" > "$REPO_ROOT/npm-hash"
+                                
+                                cat <<EOF
+
+                ✅ npm-hash updated successfully!
+                   Hash: $NPM_HASH
+                   Saved to: npm-hash
+
+                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+                ⚠️  Did you also change deps.edn (Clojure dependencies)?
+
+                If YES, you need to update the Maven hash:
+
+                  1. Edit flake.nix (around line 33)
+                     Change:  outputHash = "sha256-...";
+                     To:      outputHash = pkgs.lib.fakeHash;
+
+                  2. Get the new hash:
+                     nix build .#slate 2>&1 | grep "got:"
+
+                  3. Update flake.nix with the hash from step 2
+                     Example: outputHash = "sha256-3xKKyonI0UD7CdvDdBA11e/Kb27wG5AZSo2/+hgtpR4=";
+
+                  4. Verify the build:
+                     nix build .#slate
+
+                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+                📝 Files updated:
+                   • package-lock.json
+                   • npm-hash
+
+                💾 Commit when ready:
+                   git add package-lock.json npm-hash flake.nix
+                   git commit -m "Update dependencies and hashes"
+
+                🚀 Next steps:
+                   nix build .#slate              # Test the build
+                   nix run .#deployContainer      # Deploy to production
+
+                📖 For more info, see README.md "Dependency Management" section
+                EOF
               '';
             in "${updateScript}";
           };
