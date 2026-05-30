@@ -20,17 +20,13 @@
         packageJson = builtins.fromJSON (builtins.readFile ./package.json);
 
         # Pre-fetch Maven/Clojure deps as a fixed-output derivation.
-        # outputHash must be updated after any deps.edn change:
-        #   1. Set outputHash = pkgs.lib.fakeHash
-        #   2. Run: nix build .#packages.x86_64-linux.slate 2>&1 | grep 'got:'
-        #   3. Paste the "got:" hash below and rebuild.
+        # After changing deps.edn, run `nix build` and copy the "got:" hash here.
         mavenDeps = pkgs.stdenv.mkDerivation {
           name = "slate-maven-deps";
           src = ./.;
           nativeBuildInputs = [ jdk pkgs.clojure ];
           outputHashAlgo = "sha256";
           outputHashMode = "recursive";
-          # TODO: replace with the real hash obtained by running the steps above.
           outputHash = pkgs.lib.fakeHash;
           buildPhase = ''
             export HOME=$TMPDIR
@@ -82,36 +78,6 @@
           '';
         };
 
-        # Docker-based deploy script. Used by apps.deployContainer when the
-        # Nix-native build is unavailable (e.g. while mavenDeps.outputHash
-        # is still a placeholder). Requires Docker on PATH.
-        deployContainerScript = pkgs.writeShellScript "slate-deploy-docker" ''
-          set -euo pipefail
-          REGISTRY="registry.kube.sea.fudo.link"
-          NAME="slate"
-          REPO_ROOT=$(${pkgs.git}/bin/git rev-parse --show-toplevel)
-          GIT_HASH=$(${pkgs.git}/bin/git rev-parse HEAD 2>/dev/null || echo "unknown")
-          GIT_TIMESTAMP=$(${pkgs.git}/bin/git log -1 --format=%ct 2>/dev/null || echo "unknown")
-          VERSION_TAG=$(${pkgs.git}/bin/git log -1 --format=%cd --date=format:'%Y%m%d' 2>/dev/null || echo "dev")
-
-          echo ""
-          echo "################################################################"
-          echo "# Building Docker image and pushing to $REGISTRY             #"
-          echo "################################################################"
-          echo ""
-
-          docker build \
-            --tag "$REGISTRY/$NAME:latest" \
-            --tag "$REGISTRY/$NAME:$VERSION_TAG" \
-            "$REPO_ROOT"
-
-          docker push "$REGISTRY/$NAME:latest"
-          docker push "$REGISTRY/$NAME:$VERSION_TAG"
-
-          echo ""
-          echo "Done! Pushed $REGISTRY/$NAME:latest and $REGISTRY/$NAME:$VERSION_TAG"
-        '';
-
         # Version information (git commit + timestamp)
         versionInfo = let
           gitCommit = self.rev or self.dirtyRev or "unknown";
@@ -139,10 +105,27 @@
         packages = {
           default = slateApp;
           slate = slateApp;
-          # packages.deployContainer (Nix-native OCI image) is temporarily
-          # removed because mavenDeps.outputHash is still a placeholder.
-          # Once that hash is computed and filled in, restore it with:
-          #   deployContainer = helpers.deployContainers { ... };
+
+          deployContainer = helpers.deployContainers {
+            name = "slate";
+            repo = "registry.kube.sea.fudo.link";
+            tags = [ "latest" versionInfo.versionTag ];
+            environmentPackages = with pkgs; [
+              nodejs_20
+              cacert
+              bash
+              coreutils
+            ];
+            verbose = true;
+            env = {
+              NODE_ENV = "production";
+              APP_VERSION = packageJson.version;
+              GIT_COMMIT = versionInfo.gitCommit;
+              GIT_TIMESTAMP = versionInfo.gitTimestamp;
+              VERSION = versionInfo.versionTag;
+            };
+            entrypoint = [ "${slateApp}/bin/slate" ];
+          };
         };
 
         apps = {
@@ -178,10 +161,20 @@
 
           deployContainer = {
             type = "app";
-            # Uses Docker (not the Nix-native build) so it works even while
-            # mavenDeps.outputHash is still a placeholder. Once that hash is
-            # set correctly, packages.deployContainer provides the pure-Nix path.
-            program = "${deployContainerScript}";
+            program = let
+              deployContainer = self.packages.${system}.deployContainer;
+              wrapper = pkgs.writeShellScript "slate-deploy" ''
+                echo ""
+                echo "################################################################"
+                echo "# REMINDER: if package.json changed since the last deploy:    #"
+                echo "#   1. nix run .#update  (regenerate package-lock.json)       #"
+                echo "#   2. Update npmDepsHash in flake.nix (nix build shows hash) #"
+                echo "#   3. Commit both files before running this again.            #"
+                echo "################################################################"
+                echo ""
+                exec ${deployContainer}/bin/deployContainers "$@"
+              '';
+            in "${wrapper}";
           };
         };
       });
